@@ -54,10 +54,30 @@ public class RelayrThermometer {
     }
 
     private void subscribeToReadings(final TransmitterDevice device) {
+        System.out.println("Subscribe to readings.");
+
+        device.subscribeToCloudReadings()
+                .subscribe(new Observer<Reading>() {
+                    @Override public void onCompleted() {}
+
+                    @Override public void onError(Throwable e) {
+                        System.out.println("Problem while subscribing for data");
+                        e.printStackTrace();
+                    }
+
+                    @Override
+                    public void onNext(Reading reading) {
+                        System.out.printf("Value " + reading.value);
+                    }
+                });
+    }
+
+    //Method shows how to use relayr DeviceModel to parse data
+    private void subscribeToReadingsUsingModel(final TransmitterDevice device) {
         final Map<String, DeviceReading> readings = new HashMap<>();
 
         try {
-            DeviceModel model = RelayrJavaSdk.getDeviceModelsCache().getModel(device.getModelId());
+            DeviceModel model = RelayrJavaSdk.getDeviceModelsCache().getModelByName("Wunderbar Thermometer", false);
             DeviceFirmware firmware = model.getLatestFirmware();
             Transport transport = firmware.getDefaultTransport();
 
