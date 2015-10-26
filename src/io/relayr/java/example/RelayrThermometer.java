@@ -3,6 +3,9 @@ package io.relayr.java.example;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
 
 import io.relayr.java.RelayrJavaSdk;
 import io.relayr.java.model.Transmitter;
@@ -47,8 +50,8 @@ public class RelayrThermometer {
                     @Override public void onNext(List<TransmitterDevice> devices) {
                         System.out.println("Find thermometer");
                         for (TransmitterDevice device : devices)
-                            if (device.getId().equals("2aa3bb2a-c4c0-4ad7-acd5-4918986df0bb"))
-                                subscribeToReadings(device);
+                            if (device.getId().equals("5ea42b57-4679-4a86-9aff-49096e5995e9"))
+                                subscribeToReadingsUsingModel(device);
                     }
                 });
     }
@@ -63,6 +66,7 @@ public class RelayrThermometer {
                     @Override public void onError(Throwable e) {
                         System.out.println("Problem while subscribing for data");
                         e.printStackTrace();
+                        System.exit(0);
                     }
 
                     @Override
@@ -74,38 +78,48 @@ public class RelayrThermometer {
 
     //Method shows how to use relayr DeviceModel to parse data
     private void subscribeToReadingsUsingModel(final TransmitterDevice device) {
-        final Map<String, DeviceReading> readings = new HashMap<>();
+        final Map<String, DeviceReading> modelReadings = new HashMap<>();
 
-        try {
-            DeviceModel model = RelayrJavaSdk.getDeviceModelsCache().getModelByName("Wunderbar Thermometer", false);
-            DeviceFirmware firmware = model.getLatestFirmware();
-            Transport transport = firmware.getDefaultTransport();
+        if (RelayrJavaSdk.getDeviceModelsCache().isLoading()) {
+            new Timer().schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    subscribeToReadingsUsingModel(device);
+                }
+            }, 1000);
+        } else {
+            try {
+                DeviceModel model = RelayrJavaSdk.getDeviceModelsCache().getModelByName("Wunderbar Thermometer", false);
+                DeviceFirmware firmware = model.getLatestFirmware();
+                Transport transport = firmware.getDefaultTransport();
 
-            for (DeviceReading reading : transport.getReadings())
-                readings.put(reading.getMeaning(), reading);
-        } catch (DeviceModelsException e) {
-            e.printStackTrace();
+                for (DeviceReading reading : transport.getReadings())
+                    modelReadings.put(reading.getMeaning(), reading);
+            } catch (DeviceModelsException e) {
+                e.printStackTrace();
+            }
+
+            System.out.println("Subscribe to readings using model.");
+
+            device.subscribeToCloudReadings()
+                    .timeout(5, TimeUnit.SECONDS)
+                    .subscribe(new Observer<Reading>() {
+                        @Override public void onCompleted() {}
+
+                        @Override public void onError(Throwable e) {
+                            System.out.println("Problem while subscribing for data");
+                            e.printStackTrace();
+                            System.exit(0);
+                        }
+
+                        @Override
+                        public void onNext(Reading reading) {
+                            DeviceReading deviceReading = modelReadings.get(reading.meaning);
+
+                            if (deviceReading.getValueSchema().getSchemaType() == SchemaType.NUMBER)
+                                System.out.printf("Value " + ((Double) reading.value).intValue());
+                        }
+                    });
         }
-
-        System.out.println("Subscribe to readings.");
-
-        device.subscribeToCloudReadings()
-                .subscribe(new Observer<Reading>() {
-                    @Override public void onCompleted() {}
-
-                    @Override public void onError(Throwable e) {
-                        System.out.println("Problem while subscribing for data");
-                        e.printStackTrace();
-                    }
-
-                    @Override
-                    public void onNext(Reading reading) {
-                        DeviceReading deviceReading = readings.get(reading.meaning);
-
-                        if (deviceReading.getValueSchema().getSchemaType() == SchemaType.NUMBER ||
-                                deviceReading.getValueSchema().getSchemaType() == SchemaType.INTEGER)
-                            System.out.printf("Value " + ((Double) reading.value).intValue());
-                    }
-                });
     }
 }
