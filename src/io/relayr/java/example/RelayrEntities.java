@@ -27,8 +27,9 @@ public class RelayrEntities {
                 .subscribe(new Observer<List<Group>>() {
                     @Override public void onCompleted() {}
 
-                    @Override public void onError(Throwable throwable) {
+                    @Override public void onError(Throwable e) {
                         System.err.println("Something went wrong while fetching groups.");
+                        e.printStackTrace();
                     }
 
                     @Override public void onNext(List<Group> groups) {
@@ -45,8 +46,9 @@ public class RelayrEntities {
                 .subscribe(new Observer<List<Transmitter>>() {
                     @Override public void onCompleted() {}
 
-                    @Override public void onError(Throwable throwable) {
+                    @Override public void onError(Throwable e) {
                         System.err.println("Something went wrong while fetching transmitters.");
+                        e.printStackTrace();
                     }
 
                     @Override public void onNext(List<Transmitter> transmitters) {
@@ -63,8 +65,9 @@ public class RelayrEntities {
                 .subscribe(new Observer<List<Device>>() {
                     @Override public void onCompleted() {}
 
-                    @Override public void onError(Throwable throwable) {
+                    @Override public void onError(Throwable e) {
                         System.err.println("Something went wrong while fetching devices.");
+                        e.printStackTrace();
                     }
 
                     @Override public void onNext(List<Device> devices) {

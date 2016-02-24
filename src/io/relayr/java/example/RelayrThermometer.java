@@ -6,8 +6,10 @@ import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import io.relayr.java.RelayrJavaSdk;
+import io.relayr.java.model.Device;
 import io.relayr.java.model.Transmitter;
 import io.relayr.java.model.TransmitterDevice;
 import io.relayr.java.model.User;
@@ -24,6 +26,8 @@ import rx.functions.Func1;
 
 public class RelayrThermometer {
 
+    private static final String DEVICE_ID = "your_device_id";
+
     private User user;
 
     public RelayrThermometer(User user) {
@@ -31,15 +35,10 @@ public class RelayrThermometer {
     }
 
     public void start() {
-        user.getTransmitters()
-                .flatMap(new Func1<List<Transmitter>, Observable<List<TransmitterDevice>>>() {
-                    @Override
-                    public Observable<List<TransmitterDevice>> call(List<Transmitter> transmitters) {
-                        if (transmitters.size() > 0) return transmitters.get(0).getDevices();
-                        else return Observable.empty();
-                    }
-                })
-                .subscribe(new Observer<List<TransmitterDevice>>() {
+        //Load user devices
+        System.out.println("Start thermometer example.");
+        user.getDevices()
+                .subscribe(new Observer<List<Device>>() {
                     @Override public void onCompleted() {}
 
                     @Override public void onError(Throwable e) {
@@ -47,16 +46,29 @@ public class RelayrThermometer {
                         e.printStackTrace();
                     }
 
-                    @Override public void onNext(List<TransmitterDevice> devices) {
+                    @Override public void onNext(List<Device> devices) {
                         System.out.println("Find thermometer");
-                        for (TransmitterDevice device : devices)
-                            if (device.getId().equals("5ea42b57-4679-4a86-9aff-49096e5995e9"))
-                                subscribeToReadingsUsingModel(device);
+                        boolean found = false;
+                        for (Device device : devices) {
+                            //iterate though all user devices and find device by id
+                            //Here you must provide your deviceId
+                            if (device.getId().equals(DEVICE_ID)) {
+                                found = true;
+                                //Simple method
+                                subscribeToReadings(device);
+                                //Complex method. Shows how to parse any device data with provided device model
+                                //subscribeToReadingsUsingModel(device);
+                            }
+                        }
+                        if (!found) System.out.println("Thermometer NOT found");
                     }
                 });
     }
 
-    private void subscribeToReadings(final TransmitterDevice device) {
+    /**
+     * Simple example method for subscribing to cloud data through Device entity.
+     */
+    private void subscribeToReadings(final Device device) {
         System.out.println("Subscribe to readings.");
 
         device.subscribeToCloudReadings()
@@ -71,43 +83,59 @@ public class RelayrThermometer {
 
                     @Override
                     public void onNext(Reading reading) {
-                        System.out.printf("Value " + reading.value);
+                        if (reading.meaning.equals("temperature"))
+                            System.out.println("Temperature " + reading.value);
                     }
                 });
     }
 
-    //Method shows how to use relayr DeviceModel to parse data
-    private void subscribeToReadingsUsingModel(final TransmitterDevice device) {
+    /**
+     * Method shows how to use relayr DeviceModel to parse Thermoneter data
+     */
+    private void subscribeToReadingsUsingModel(final Device device) {
         final Map<String, DeviceReading> modelReadings = new HashMap<>();
 
+        //Check if cache is loaded
+        //Cache is not loaded by default. It must be set with Builder argument:
+        //RelayrJavaSdk.Builder()...cacheModels(true).build();
         if (RelayrJavaSdk.getDeviceModelsCache().isLoading()) {
             new Timer().schedule(new TimerTask() {
                 @Override
                 public void run() {
+                    System.out.printf("Cache loading...");
                     subscribeToReadingsUsingModel(device);
                 }
             }, 1000);
         } else {
+            //Get device model for thermometer sensor and list all possible readings
             try {
                 DeviceModel model = RelayrJavaSdk.getDeviceModelsCache().getModelByName("Wunderbar Thermometer", false);
                 DeviceFirmware firmware = model.getLatestFirmware();
                 Transport transport = firmware.getDefaultTransport();
 
+                System.out.printf("Device model found");
+
+                //Every device reading defines ValueSchema that describes value type and other details
                 for (DeviceReading reading : transport.getReadings())
                     modelReadings.put(reading.getMeaning(), reading);
             } catch (DeviceModelsException e) {
+                System.out.printf("Device model not found");
                 e.printStackTrace();
             }
 
             System.out.println("Subscribe to readings using model.");
 
             device.subscribeToCloudReadings()
-                    .timeout(5, TimeUnit.SECONDS)
+                    .timeout(10, TimeUnit.SECONDS)
                     .subscribe(new Observer<Reading>() {
                         @Override public void onCompleted() {}
 
                         @Override public void onError(Throwable e) {
-                            System.out.println("Problem while subscribing for data");
+                            if (e instanceof TimeoutException)
+                                System.out.println("subscribeToCloudReadings - error.");
+                            else
+                                System.out.println("subscribeToCloudReadings - timeout.");
+
                             e.printStackTrace();
                             System.exit(0);
                         }
@@ -117,7 +145,8 @@ public class RelayrThermometer {
                             DeviceReading deviceReading = modelReadings.get(reading.meaning);
 
                             if (deviceReading.getValueSchema().getSchemaType() == SchemaType.NUMBER)
-                                System.out.printf("Value " + ((Double) reading.value).intValue());
+                                if (deviceReading.getMeaning().equals("temperature"))
+                                    System.out.println("Temperature " + reading.value);
                         }
                     });
         }
